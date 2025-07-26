@@ -1,13 +1,19 @@
 import argparse
+import json
+import jsonpickle
 import logging
 import math
+import os
 import random
 import time
 from datetime import datetime
+from msilib import Feature
 from typing import List
 
 import carla
-from carla import World, Client, WeatherParameters, Actor
+from carla import VehicleLightState as vLS, WeatherParameters, Vehicle, Actor, Map
+from carla import World, Client
+from numpy.f2py.auxfuncs import throw_error
 
 from carla_data_classes.dynamic import DataWeatherParameters
 from carla_data_classes.enums.DataWeatherParametersType import DataWeatherParametersType
@@ -19,15 +25,43 @@ from helpers.json_helper import JSONHelper
 # -- start_recording() ---------------------------------------------------------
 # ==============================================================================
 
+class OverlappingGroup:
+    def __init__(self, name: str, fraction: int, features):
+        self.name = name
+        self.fraction = fraction
+        self.features = features
+
+
+class DisjunctGroup:
+    def __init__(self, name: str, fraction: int, overlapping_groups: list[OverlappingGroup]):
+        self.name = name
+        self.fraction = fraction
+        self.overlapping_groups = overlapping_groups
+
+class AutopilotConfig:
+    def __init__(self, disjunct_groups: list[DisjunctGroup]):
+        self.disjunct_groups = disjunct_groups
+
+
+
+
 
 class CarlaDataGenerator:
     SIMULATOR_FIXED_TICK_DELTA = 0.05
+    AUTOPILOT_CONFIG_PATH = "/../gui/daten.json"
 
     def __init__(self, carla_client: Client):
         self.ego_vehicle = None
         self.client = carla_client
         self.world: World = carla_client.get_world()
         self.map = self.world.get_map()
+        self.autopilot_config = self.get_autopilot_config()
+
+
+    def get_autopilot_config(self):
+        if os.path.exists(self.AUTOPILOT_CONFIG_PATH):
+            with open(self.AUTOPILOT_CONFIG_PATH, "r") as config_file:
+                return jsonpickle.decode(config_file.read())
 
     @staticmethod
     def start_recording(client: Client, file_name: str, map_name: str, additional_infos=False) -> str:
@@ -247,9 +281,57 @@ class CarlaDataGenerator:
         # Example of how to use Traffic Manager parameters
         traffic_manager.global_percentage_speed_difference(30.0)
 
+        self.apply_autopilot_config(traffic_manager)
+
         world.tick()
 
         return vehicles_list
+
+    def apply_autopilot_config(self, traffic_manager, vehicles_list):
+        all_vehicles = world.get_actors(vehicles_list)
+        num_reserved_vehicles = 0
+        for disjunct_group in self.autopilot_config["autopilot_groups"]:
+            required_vehicles = math.floor(len(all_vehicles)* disjunct_group.fraction / 100)
+            if required_vehicles < len(all_vehicles) - num_reserved_vehicles:
+                vehicles = all_vehicles[num_reserved_vehicles:num_reserved_vehicles + required_vehicles]
+                for overlapping_group in disjunct_group.overlapping_groups:
+                    self.handle_overlapping_group(traffic_manager, overlapping_group, vehicles)
+                num_reserved_vehicles += required_vehicles
+            else:
+                raise AttributeError("Config has too many reserved vehicles at disjunct group {}", disjunct_group.name)
+
+    def handle_overlapping_group(self, traffic_manager, overlapping_group, vehicles):
+        for feature in overlapping_group.features:
+            required_vehicles = math.floor(len(vehicles) * overlapping_group.fraction / 100)
+            sampled_vehicles = random.sample(vehicles, required_vehicles)
+            for vehicle in sampled_vehicles:
+                self.set_feature(traffic_manager, vehicle, feature)
+
+    def set_feature(self, traffic_manager, vehicle, feature):
+        match feature.name:
+            case "distance_to_leading_vehicle":
+                traffic_manager.distance_to_leading_vehicle(vehicle, feature.distance)
+            case "vehicle_lane_offset":
+                traffic_manager.vehicle_lane_offset(vehicle, feature.lane_offset)
+            case "ignore_lights_percentage":
+                traffic_manager.ignore_lights_percentage(vehicle, feature.percentage)
+            case "ignore_signs_percentage":
+                traffic_manager.ignore_signs_percentage(vehicle, feature.percentage)
+            case "ignore_vehicles_percentage":
+                traffic_manager.ignore_vehicles_percentage(vehicle, feature.percentage)
+            case "ignore_walkers_percentage":
+                traffic_manager.ignore_walkers_percentage(vehicle, feature.percentage)
+            case "keep_slow_lane_rule_percentage":
+                traffic_manager.keep_slow_lane_rule_percentage(vehicle, feature.percentage)
+            case "random_left_lanechange_percentage":
+                traffic_manager.random_left_lanechange_percentage(vehicle, feature.percentage)
+            case "random_right_lanechange_percentage":
+                traffic_manager.random_right_lanechange_percentage(vehicle, feature.percentage)
+            case "update_vehicle_lights":
+                traffic_manager.update_vehicle_lights(vehicle, True)
+            case "vehicle_percentage_speed_difference":
+                traffic_manager.vehicle_percentage_speed_difference(vehicle, feature.percentage)
+
 
     @staticmethod
     def change_map(client: Client) -> str:
