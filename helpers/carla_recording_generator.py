@@ -17,50 +17,34 @@ from numpy.f2py.auxfuncs import throw_error
 
 from carla_data_classes.dynamic import DataWeatherParameters
 from carla_data_classes.enums.DataWeatherParametersType import DataWeatherParametersType
+from helpers.AutopilotConfigDataClasses import AutopilotConfig, Feature
 from helpers.carla_api_helper import CarlaAPIHelper
 from helpers.json_helper import JSONHelper
+import helpers.AutopilotConfigDataClasses
 
 
 # ==============================================================================
 # -- start_recording() ---------------------------------------------------------
 # ==============================================================================
 
-class OverlappingGroup:
-    def __init__(self, name: str, fraction: int, features):
-        self.name = name
-        self.fraction = fraction
-        self.features = features
-
-
-class DisjunctGroup:
-    def __init__(self, name: str, fraction: int, overlapping_groups: list[OverlappingGroup]):
-        self.name = name
-        self.fraction = fraction
-        self.overlapping_groups = overlapping_groups
-
-class AutopilotConfig:
-    def __init__(self, disjunct_groups: list[DisjunctGroup]):
-        self.disjunct_groups = disjunct_groups
-
-
-
 
 
 class CarlaDataGenerator:
     SIMULATOR_FIXED_TICK_DELTA = 0.05
-    AUTOPILOT_CONFIG_PATH = "/../gui/daten.json"
+    AUTOPILOT_CONFIG_PATH = r"C:\Users\kasim\IdeaProjects\stars-export-carla-kasimir\gui\daten.json"
 
     def __init__(self, carla_client: Client):
         self.ego_vehicle = None
         self.client = carla_client
         self.world: World = carla_client.get_world()
         self.map = self.world.get_map()
-        self.autopilot_config = self.get_autopilot_config()
+        self.autopilot_config : AutopilotConfig = self.get_autopilot_config()
 
 
     def get_autopilot_config(self):
         if os.path.exists(self.AUTOPILOT_CONFIG_PATH):
             with open(self.AUTOPILOT_CONFIG_PATH, "r") as config_file:
+                print("decoding autopilot config file")
                 return jsonpickle.decode(config_file.read())
 
     @staticmethod
@@ -281,56 +265,67 @@ class CarlaDataGenerator:
         # Example of how to use Traffic Manager parameters
         traffic_manager.global_percentage_speed_difference(30.0)
 
-        self.apply_autopilot_config(traffic_manager)
+        self.apply_autopilot_config(traffic_manager, vehicles_list)
 
         world.tick()
 
         return vehicles_list
 
-    def apply_autopilot_config(self, traffic_manager, vehicles_list):
-        all_vehicles = world.get_actors(vehicles_list)
+    def apply_autopilot_config(self, traffic_manager, vehicle_ids_list):
+        print("Applying autopilot config")
+        print(str(self.autopilot_config))
+        all_vehicles = world.get_actors(vehicle_ids_list)
         num_reserved_vehicles = 0
-        for disjunct_group in self.autopilot_config["autopilot_groups"]:
-            required_vehicles = math.floor(len(all_vehicles)* disjunct_group.fraction / 100)
-            if required_vehicles < len(all_vehicles) - num_reserved_vehicles:
-                vehicles = all_vehicles[num_reserved_vehicles:num_reserved_vehicles + required_vehicles]
+
+        for disjunct_group in self.autopilot_config.disjunct_groups:
+            print("Disjunct group: %s" % disjunct_group.name)
+
+
+            required_vehicles = math.floor(len(vehicle_ids_list)* disjunct_group.fraction / 100)
+            print("number of available vehicles: %d" % (len(vehicle_ids_list) - num_reserved_vehicles))
+            print("number of required vehicles: %d" % required_vehicles)
+
+            if required_vehicles <= len(vehicle_ids_list) - num_reserved_vehicles:
+                vehicle_ids = vehicle_ids_list[num_reserved_vehicles:num_reserved_vehicles + required_vehicles]
                 for overlapping_group in disjunct_group.overlapping_groups:
-                    self.handle_overlapping_group(traffic_manager, overlapping_group, vehicles)
+                    self.handle_overlapping_group(traffic_manager, overlapping_group, vehicle_ids)
                 num_reserved_vehicles += required_vehicles
             else:
                 raise AttributeError("Config has too many reserved vehicles at disjunct group {}", disjunct_group.name)
 
-    def handle_overlapping_group(self, traffic_manager, overlapping_group, vehicles):
+    def handle_overlapping_group(self, traffic_manager, overlapping_group, vehicle_ids):
+        print("Handling overlapping group")
         for feature in overlapping_group.features:
-            required_vehicles = math.floor(len(vehicles) * overlapping_group.fraction / 100)
-            sampled_vehicles = random.sample(vehicles, required_vehicles)
+            required_vehicles = math.floor(len(vehicle_ids) * overlapping_group.fraction / 100)
+            sampled_vehicle_ids = random.sample(vehicle_ids, required_vehicles)
+            sampled_vehicles = world.get_actors(sampled_vehicle_ids)
             for vehicle in sampled_vehicles:
                 self.set_feature(traffic_manager, vehicle, feature)
 
-    def set_feature(self, traffic_manager, vehicle, feature):
-        match feature.name:
-            case "distance_to_leading_vehicle":
-                traffic_manager.distance_to_leading_vehicle(vehicle, feature.distance)
-            case "vehicle_lane_offset":
-                traffic_manager.vehicle_lane_offset(vehicle, feature.lane_offset)
-            case "ignore_lights_percentage":
-                traffic_manager.ignore_lights_percentage(vehicle, feature.percentage)
-            case "ignore_signs_percentage":
-                traffic_manager.ignore_signs_percentage(vehicle, feature.percentage)
-            case "ignore_vehicles_percentage":
-                traffic_manager.ignore_vehicles_percentage(vehicle, feature.percentage)
-            case "ignore_walkers_percentage":
-                traffic_manager.ignore_walkers_percentage(vehicle, feature.percentage)
-            case "keep_slow_lane_rule_percentage":
-                traffic_manager.keep_slow_lane_rule_percentage(vehicle, feature.percentage)
-            case "random_left_lanechange_percentage":
-                traffic_manager.random_left_lanechange_percentage(vehicle, feature.percentage)
-            case "random_right_lanechange_percentage":
-                traffic_manager.random_right_lanechange_percentage(vehicle, feature.percentage)
-            case "update_vehicle_lights":
-                traffic_manager.update_vehicle_lights(vehicle, True)
-            case "vehicle_percentage_speed_difference":
-                traffic_manager.vehicle_percentage_speed_difference(vehicle, feature.percentage)
+    def set_feature(self, traffic_manager, vehicle, feature: Feature):
+        if feature.name == "distance_to_leading_vehicle":
+            traffic_manager.distance_to_leading_vehicle(vehicle, feature.value)
+        elif feature.name == "vehicle_lane_offset":
+            traffic_manager.vehicle_lane_offset(vehicle, feature.value)
+        elif feature.name == "ignore_lights_percentage":
+            traffic_manager.ignore_lights_percentage(vehicle, feature.value)
+        elif feature.name == "ignore_signs_percentage":
+            traffic_manager.ignore_signs_percentage(vehicle, feature.value)
+        elif feature.name == "ignore_vehicles_percentage":
+            traffic_manager.ignore_vehicles_percentage(vehicle, feature.value)
+        elif feature.name == "ignore_walkers_percentage":
+            traffic_manager.ignore_walkers_percentage(vehicle, feature.value)
+        elif feature.name == "keep_slow_lane_rule_percentage":
+            traffic_manager.keep_slow_lane_rule_percentage(vehicle, feature.value)
+        elif feature.name == "random_left_lanechange_percentage":
+            traffic_manager.random_left_lanechange_percentage(vehicle, feature.value)
+        elif feature.name == "random_right_lanechange_percentage":
+            traffic_manager.random_right_lanechange_percentage(vehicle, feature.value)
+        elif feature.name == "update_vehicle_lights":
+            traffic_manager.update_vehicle_lights(vehicle, True)
+        elif feature.name == "vehicle_percentage_speed_difference":
+            traffic_manager.vehicle_percentage_speed_difference(vehicle, feature.value)
+
 
 
     @staticmethod
@@ -410,7 +405,7 @@ if __name__ == '__main__':
     argparser.add_argument(
         '-n', '--number-of-vehicles',
         metavar='N',
-        default=200,
+        default=30,
         type=int,
         help='Number of vehicles (default: 30)')
     argparser.add_argument(
