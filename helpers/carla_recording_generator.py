@@ -79,19 +79,18 @@ class CarlaDataGenerator:
             print("   Warning! Actor Generation is not valid. No actor will be spawned.")
             return []
 
-    def generate_traffic(self, args) -> List[int]:
+    def generate_traffic(self, args, client, world) -> List[int]:
         """
         This is a copy of the code in the shipped generate_traffic.py file of Carla
         """
         vehicles_list = []
         walkers_list = []
         all_id = []
-        client = carla.Client(args.host, args.port)
         client.set_timeout(10.0)
         synchronous_master = False
         random.seed(args.seed if args.seed is not None else int(time.time()))
 
-        world = client.get_world()
+
 
         traffic_manager = client.get_trafficmanager(args.tm_port)
         traffic_manager.set_global_distance_to_leading_vehicle(2.5)
@@ -247,6 +246,7 @@ class CarlaDataGenerator:
         if args.asynch or not synchronous_master:
             world.wait_for_tick()
         else:
+            print("+++++++++++++++++++++++++++++++++ synchronous mode")
             world.tick()
 
         # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
@@ -316,7 +316,7 @@ class CarlaDataGenerator:
         elif feature.name == "ignore_walkers_percentage":
             traffic_manager.ignore_walkers_percentage(vehicle, feature.value)
         elif feature.name == "keep_slow_lane_rule_percentage":
-            traffic_manager.keep_slow_lane_rule_percentage(vehicle, feature.value)
+            traffic_manager.keep_right_rule_percentage(vehicle, feature.value)
         elif feature.name == "random_left_lanechange_percentage":
             traffic_manager.random_left_lanechange_percentage(vehicle, feature.value)
         elif feature.name == "random_right_lanechange_percentage":
@@ -405,13 +405,13 @@ if __name__ == '__main__':
     argparser.add_argument(
         '-n', '--number-of-vehicles',
         metavar='N',
-        default=30,
+        default=100,
         type=int,
         help='Number of vehicles (default: 30)')
     argparser.add_argument(
         '-w', '--number-of-walkers',
         metavar='W',
-        default=30,
+        default=20,
         type=int,
         help='Number of walkers (default: 10)')
     argparser.add_argument(
@@ -477,7 +477,7 @@ if __name__ == '__main__':
     argparser.add_argument(
         '-l', '--length-of-run',
         metavar='L',
-        default=5,
+        default=0.5,
         type=float,
         help='Length of the run in minutes (default: 5')
 
@@ -498,10 +498,13 @@ if __name__ == '__main__':
     map_name = data_generator.change_map(client=client)
     time.sleep(5)
 
+    world = client.get_world()
+    data_generator.world = world
+
     file_name = map_name + "_seed" + str(args.seed)
     recording_dir = data_generator.start_recording(client=client, file_name=file_name, map_name=map_name)
 
-    spawned_vehicle_ids = data_generator.generate_traffic(args)
+    spawned_vehicle_ids = data_generator.generate_traffic(args, client, world)
 
     try:
         target_length_of_run_in_minutes = args.length_of_run
