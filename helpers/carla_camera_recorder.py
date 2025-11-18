@@ -100,6 +100,9 @@ class CarlaCameraRecorder:
             vehicles = api_helper.get_vehicles()
             world.tick()
 
+        for vehicle in vehicles:
+            print(str(vehicle.id))
+
         # Get the ego vehicle from the given vehicle id
         if vehicle_id == -1:
             ego_vehicle: Vehicle = list(filter(lambda v: 'hero' in v.attributes['role_name'], vehicles))[0]
@@ -234,13 +237,13 @@ if __name__ == '__main__':
         '-p', '--path',
         metavar='P',
         type=str,
-        default='.\..\scenarios\scenario_1\scenario_2024_30_05_15_48_41.log',
+        default='.\..\generated-data/recordings/_Game_Carla_Maps_Town02_seed91.log',
         help='Set path of the recording file that should be recorded')
     argparser.add_argument(
         '-v', '--vehicle-id',
         metavar='V',
         type=int,
-        default=-1,
+        default=163,
         help='For which vehicle id should the camera be recorded?')
     argparser.add_argument(
         '-x', '--width',
@@ -258,13 +261,13 @@ if __name__ == '__main__':
         '-b', '--begin_at',
         metavar='B',
         type=float,
-        default=0.0,
+        default=0,
         help='Tick at which the video should start')
     argparser.add_argument(
         '-e', '--end_at',
         metavar='E',
         type=float,
-        default=sys.maxsize,
+        default=40,
         help='Tick at which the video should end')
     argparser.add_argument(
         '-d', '--destination',

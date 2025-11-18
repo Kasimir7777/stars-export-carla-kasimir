@@ -36,7 +36,7 @@ class FeatureFrame(customtkinter.CTkFrame):
         self.distribution_checkbox.grid(row=0, column=2, sticky="nsew")
 
     def get_feature(self) -> Feature:
-        return Feature(name=self.feature_combobox.get(), value=int(self.value_entry.get()), normal_distributed=bool(self.distribution_checkbox.get()))
+        return Feature(name=self.feature_combobox.get(), value=float(self.value_entry.get()), normal_distributed=bool(self.distribution_checkbox.get()))
 
 
 

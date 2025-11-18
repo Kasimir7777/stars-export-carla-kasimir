@@ -1,0 +1,1 @@
+for /l %%x in (0, 1, 99) do call generate_recording.bat %%x

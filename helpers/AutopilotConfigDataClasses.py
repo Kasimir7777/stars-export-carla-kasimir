@@ -2,7 +2,7 @@ from typing import List
 
 
 class Feature:
-    def __init__(self, name: str, value: int, normal_distributed: bool):
+    def __init__(self, name: str, value: float, normal_distributed: bool):
         self.name = name
         self.value = value
         self.normal_distributed = normal_distributed

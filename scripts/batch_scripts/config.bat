@@ -1,0 +1,1 @@
+set CARLA_HOME=C:\Users\kasim\PycharmProjects\WindowsNoEditor\CarlaUE4.exe

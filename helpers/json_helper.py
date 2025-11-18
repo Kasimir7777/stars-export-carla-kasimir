@@ -71,8 +71,10 @@ class JSONHelper:
         """
         if log_directory == "":
             log_directory = JSONHelper.get_file_path_folder(folder)
+        print("log_directory1", log_directory)
         if map_name:
             log_directory = os.path.join(log_directory, JSONHelper.clean_string(map_name))
+        print("log_directory2", log_directory)
         # Create folder if it does not exist
         if not os.path.exists(log_directory):
             os.makedirs(log_directory)
@@ -87,6 +89,10 @@ class JSONHelper:
             name_string += f"_{datetime.now().date()}"
         name_string = JSONHelper.clean_string(name_string)
         # Create path for calculated name
+        print("log directory name:", log_directory)
+        print("name string:", name_string)
+        print("file ending:", file_ending)
+        print("get file path for name result: ", os.path.join(log_directory, f"{name_string}.{file_ending}"))
         return os.path.join(log_directory, f"{name_string}.{file_ending}")
 
     @staticmethod

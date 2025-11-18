@@ -27,8 +27,9 @@ from helpers.kinematics import compute_vel_acc_for_ticks
 
 
 class CarlaMonitor:
+    DEFAULT_LOG_FILE = None
     FORCE_JSON_FILE_UPDATES = False
-    ONLY_TRACK_AT_SPECIFIC_INTERVAL = False
+    ONLY_TRACK_AT_SPECIFIC_INTERVAL = True
     SPECIFIC_TRACK_INTERVAL = 0.5  # in seconds
 
     DEFAULT_LOG_FOLDER = "C:/Users/Till/Downloads/scenarios/scenarios/scenario_1"
@@ -50,7 +51,7 @@ class CarlaMonitor:
             print(f">> [IO] There is no weather data for the recording file: '{weather_file}'")
             print(">> [CARLA] Take default weather parameters.")
             return DataWeatherParameters.from_weather(WeatherParameters.Default, DataWeatherParametersType.Default)
-        return JSONHelper.load_weather_from_scenic(weather_file)
+        return JSONHelper.load_weather(weather_file)
 
     # -------- tiny helpers -----------------------------------------------------
 
@@ -85,6 +86,7 @@ class CarlaMonitor:
         try:
             # Get info for map + duration
             info = self.client.show_recorder_file_info(log_data_path, True)
+            #print(f">> [CARLA] Recorder info: '{info}'")
             if info == "File is not a CARLA recorder/n":
                 print(">> [CARLA] The file at path", file_path, "is not a CARLA recorder")
                 return
@@ -153,6 +155,13 @@ class CarlaMonitor:
                 # Optional sampling throttle (unchanged)
                 if CarlaMonitor.ONLY_TRACK_AT_SPECIFIC_INTERVAL and math.fmod(
                         round(current_time, 3), CarlaMonitor.SPECIFIC_TRACK_INTERVAL) != 0:
+                    world.tick()
+                    continue
+
+                vehicles = api_helper.get_vehicles()
+                if len(vehicles) == 0:
+                    # Skip monitoring, as there are no vehicles to monitor
+                    print("[CARLA] There are no vehicles at the current tick. Skip")
                     world.tick()
                     continue
 
@@ -239,26 +248,52 @@ class CarlaMonitor:
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description=__doc__)
+
     argparser.add_argument(
-        '-f', '--folder',
+        '-f', '--file',
         metavar='F',
         type=str,
-        default=CarlaMonitor.DEFAULT_LOG_FOLDER,
-        help='Set explicit recording folder path')
+        default="./../generated-data/recordings/blabla.zip",
+        help='Set explicit recording file path')
     args = argparser.parse_args()
-    folder_path = os.path.abspath(args.folder)
-    print("Analyze folder at:", folder_path)
+    #folder_path = os.path.abspath(args.folder)
+    #print("Analyze folder at:", folder_path)
+    print("filepath argument: {}".format(args.file))
+
+    file_path = os.path.abspath(args.file)
+
+    print("Analyze file at:", file_path)
+    folder_name = os.path.dirname(file_path)
+    print("Analyze file in:", folder_name)
+
+    # Unzip recorder file at path
+    print("Extracting recording zip")
+    JSONHelper.extract_from_zip(file_path)
 
     # Initialize variables
-    log_file = None
-    scenic_file = None
+    log_file = file_path.replace(".zip",".log")
+
+    print("Getting weather file and shit")
+
+    base_file_name_for_weather = os.path.basename(file_path).split(".")[0]
+    base_folder_name_for_weather = folder_name.split("\\")[-1]
+    print("base file name for weather:", base_file_name_for_weather)
+    print("base folder name for weather:", base_folder_name_for_weather)
+    weather_file = JSONHelper.get_file_path_for_name(name=base_file_name_for_weather, map_name=base_folder_name_for_weather,
+                                                      folder=JSONHelper.RECORDINGS_RUNS_FOLDER, file_ending="zip",
+                                                      prefix=JSONHelper.WEATHER_FILE_NAME_PREFIX)
+    # Unzip recorder file at path
+    print("Extracting weather zip at:", weather_file)
+    JSONHelper.extract_from_zip(weather_file)
+    # Log file path
+    scenic_file = weather_file.replace(".zip", ".json")
 
     # Search for the files
-    for file in os.listdir(folder_path):
-        if file.endswith(".log"):
-            log_file = os.path.join(folder_path, file)
-        elif file.endswith(".scenic"):
-            scenic_file = os.path.join(folder_path, file)
+    #for file in os.listdir(folder_path):
+    #    if file.endswith(".log"):
+    #        log_file = os.path.join(folder_path, file)
+    #    elif file.endswith(".scenic"):
+    #        scenic_file = os.path.join(folder_path, file)
 
     print(f"Got simulation file: {log_file}")
     print(f"Got scenic file: {scenic_file}")
@@ -272,7 +307,7 @@ if __name__ == '__main__':
         print("Connected to carla")
         print("Analyze recording", log_file)
         # Example:
-        # monitor.monitor_simulation_run(file_path=log_file, weather_file_path=scenic_file, result_file_path="<out dir>")
+        monitor.monitor_simulation_run(file_path=log_file, weather_file_path=scenic_file, result_file_path="C:\\Users\kasim\IdeaProjects\stars-export-carla-kasimir\carla-output-folder")
         print("Done with monitoring the recording")
     except RuntimeError as err:
         print("Logged failed Carla run in main")
